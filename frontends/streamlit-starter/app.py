@@ -11,9 +11,27 @@ Features include:
 
 import streamlit as st
 import requests
+import os
+from dotenv import load_dotenv
 
-# Backend API configuration
-BACKEND_URL = "http://backend-service:8000"
+# Load env (.env in project root or current dir)
+load_dotenv()
+
+# Backend API configuration (local dev)
+BACKEND_URL = "http://127.0.0.1:8000"
+
+# Normalize model id to ASCII-safe (HTTP headers are latin-1)
+def normalize_model_id(mid: str) -> str:
+    # Replace common unicode dashes with ASCII hyphen
+    return (
+        (mid or "")
+        .replace("\u2010", "-")  # hyphen
+        .replace("\u2011", "-")  # non-breaking hyphen
+        .replace("\u2012", "-")  # figure dash
+        .replace("\u2013", "-")  # en dash
+        .replace("\u2014", "-")  # em dash
+        .strip()
+    )
 
 # Configure Streamlit page settings
 st.set_page_config(page_title="IONOS Chatbot", page_icon="💬", layout="wide")
@@ -24,7 +42,7 @@ st.sidebar.markdown("---")
 
 # RAG Initialization Section
 st.sidebar.subheader("🔗 RAG Initialization")
-rag_url = st.sidebar.text_input("Page URL", value="https://example.com", key="rag_url")
+rag_url = st.sidebar.text_input("Page URL", value="", placeholder="https://example.com", key="rag_url")
 
 # Handle RAG initialization button click
 if st.sidebar.button("Initialize RAG", key="init_rag_btn"):
@@ -62,7 +80,7 @@ def fetch_model_ids():
         st.sidebar.error(f"Error fetching models: {e}")
         return []
 
-MODEL_OPTIONS = fetch_model_ids() or ["meta‑llama/Meta‑Llama‑3.1‑8B‑Instruct"]
+MODEL_OPTIONS = fetch_model_ids() or ["meta-llama/Meta-Llama-3.1-8B-Instruct"]
 model = st.sidebar.selectbox("Model", MODEL_OPTIONS, key="model_select")
 
 st.sidebar.markdown("---")
@@ -74,7 +92,7 @@ st.title("IONOS Chatbot 🗨️")
 if "chat_history" not in st.session_state:
     try:
         # Fetch existing chat history from backend
-        resp = requests.get(f"{BACKEND_URL}/", headers={"x-model-id": model})
+        resp = requests.get(f"{BACKEND_URL}/", headers={"x-model-id": normalize_model_id(model)})
         if resp.ok:
             st.session_state["chat_history"] = resp.json()
         else:
@@ -122,7 +140,7 @@ if send_btn and user_message.strip():
             resp = requests.post(
                 f"{BACKEND_URL}/",
                 json={"prompt": user_message},
-                headers={"x-model-id": model},
+                headers={"x-model-id": normalize_model_id(model)},
             )
             if resp.ok:
                 # Add AI response to chat history
@@ -130,7 +148,7 @@ if send_btn and user_message.strip():
                 
                 # Attempt to sync with backend chat history
                 try:
-                    hist_resp = requests.get(f"{BACKEND_URL}/", headers={"x-model-id": model})
+                    hist_resp = requests.get(f"{BACKEND_URL}/", headers={"x-model-id": normalize_model_id(model)})
                     if hist_resp.ok:
                         backend_history = hist_resp.json()
                         # Update local history if backend has more recent messages
