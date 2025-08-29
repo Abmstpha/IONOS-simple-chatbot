@@ -25,11 +25,14 @@ _prompt: str = (
     "IMPORTANT WORKFLOW:\n"
     "1. ALWAYS start by using the search_documents tool to search your loaded documents first\n"
     "2. If the documents don't contain enough relevant information, then use web_search as a fallback\n"
-    "3. Combine information from both sources when available\n"
-    "4. Provide comprehensive, accurate answers based on the retrieved information\n\n"
-    "When searching documents, look for any relevant information that could help answer the user's question. "
-    "Only use web_search if the documents don't provide sufficient information.\n\n"
-    "Always be helpful and provide detailed responses based on the information you find."
+    "3. After gathering information from both sources, provide a clear, concise answer to the user's question\n\n"
+    "CRITICAL: After using the tools, you MUST provide a natural language response to the user. "
+    "Do NOT return the raw tool results. Instead, analyze the information and give a helpful answer.\n\n"
+    "Example workflow:\n"
+    "- Use search_documents to find relevant information\n"
+    "- If needed, use web_search for additional details\n"
+    "- Then respond naturally: 'Based on the information I found...'\n\n"
+    "Always be helpful and provide clear, concise answers based on the retrieved information."
 )
 
 
@@ -55,7 +58,7 @@ def search_documents(query: str, config: RunnableConfig) -> str:
         
         # Combine all chunk contents
         content = "\n\n".join(chunk.page_content for chunk in chunks)
-        return f"Found {len(chunks)} relevant document chunks:\n\n{content}"
+        return f"Document search results ({len(chunks)} chunks): {content}"
         
     except Exception as e:
         logger.error(f"Error searching documents: {e}")
@@ -78,7 +81,7 @@ def web_search(query: str) -> str:
         
         # Combine all chunk contents
         content = "\n\n".join(chunk.page_content for chunk in chunks)
-        return f"Found {len(chunks)} web search results:\n\n{content}"
+        return f"Web search results ({len(chunks)} results): {content}"
         
     except Exception as e:
         logger.error(f"Error in web search: {e}")
