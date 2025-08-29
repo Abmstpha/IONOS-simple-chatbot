@@ -20,32 +20,72 @@ logging.basicConfig(
 )
 logger = logging.getLogger("chatbot-server")
 
-_prompt: str = ("You are an assistant. Your role is to answer user's question."
-                "Whenever an user ask a question, first search your documents, if you don't have enough information, do a web search."
-                "Once you have enough information, you can answer the user query.")
+_prompt: str = (
+    "You are an expert AI assistant with access to both document search and web search capabilities.\n\n"
+    "IMPORTANT WORKFLOW:\n"
+    "1. ALWAYS start by using the search_documents tool to search your loaded documents first\n"
+    "2. If the documents don't contain enough relevant information, then use web_search as a fallback\n"
+    "3. After gathering information from both sources, provide a clear, concise answer to the user's question\n\n"
+    "CRITICAL: After using the tools, you MUST provide a natural language response to the user. "
+    "Do NOT return the raw tool results. Instead, analyze the information and give a helpful answer.\n\n"
+    "Example workflow:\n"
+    "- Use search_documents to find relevant information\n"
+    "- If needed, use web_search for additional details\n"
+    "- Then respond naturally: 'Based on the information I found...'\n\n"
+    "Always be helpful and provide clear, concise answers based on the retrieved information."
+)
 
 
 @tool
 def search_documents(query: str, config: RunnableConfig) -> str:
     """
-    First search your own documents to see if you have enough information.
+    Search your loaded documents for relevant information. Use this first before web search.
     """
     logger.info(f"Searching scrapped web page for: {query}")
-    chunks = config["configurable"]["retriever"].invoke(query, k=8)
-    logger.info(chunks)
-    return "\n\n".join(chunk.page_content for chunk in chunks)
+    
+    # Check if retriever is available
+    if "retriever" not in config.get("configurable", {}):
+        logger.warning("No retriever available in config")
+        return "No documents have been loaded yet. Please initialize RAG first by providing a URL."
+    
+    try:
+        retriever = config["configurable"]["retriever"]
+        chunks = retriever.invoke(query, k=8)
+        logger.info(f"Found {len(chunks)} document chunks")
+        
+        if not chunks:
+            return "No relevant information found in the loaded documents."
+        
+        # Combine all chunk contents
+        content = "\n\n".join(chunk.page_content for chunk in chunks)
+        return f"Document search results ({len(chunks)} chunks): {content}"
+        
+    except Exception as e:
+        logger.error(f"Error searching documents: {e}")
+        return f"Error searching documents: {str(e)}"
 
 
 @tool
 def web_search(query: str) -> str:
     """
-    Do a web search to query additional information for the user.
+    Search the web for additional information. Use this as a fallback when documents don't have enough information.
     """
     logger.info(f"Searching web for: {query}")
-    retriever = TavilySearchAPIRetriever(k=8)
-    chunks = retriever.invoke(query)
-    logger.info(chunks)
-    return "\n\n".join(chunk.page_content for chunk in chunks)
+    try:
+        retriever = TavilySearchAPIRetriever(k=8)
+        chunks = retriever.invoke(query)
+        logger.info(f"Found {len(chunks)} web search results")
+        
+        if not chunks:
+            return "No relevant information found on the web."
+        
+        # Combine all chunk contents
+        content = "\n\n".join(chunk.page_content for chunk in chunks)
+        return f"Web search results ({len(chunks)} results): {content}"
+        
+    except Exception as e:
+        logger.error(f"Error in web search: {e}")
+        return f"Error searching the web: {str(e)}"
 
 
 def create_chatbot_agent(model_name: str) -> CompiledStateGraph:

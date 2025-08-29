@@ -4,6 +4,8 @@
 
 ## Project Overview
 
+**Note: This is a version of the chatbot created by Abdellahi to include RAG functionality for testing and evaluation purposes.**
+
 This repository contains a **full-stack RAG chatbot** powered by LangChain and IONOS, with separate **frontend** and **backend** folders:
 
 - **frontend**: A Next.js (React) application that allows users to input a page URL, select a model, and chat with an AI assistant based on website content.
