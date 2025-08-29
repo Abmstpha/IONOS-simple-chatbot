@@ -63,12 +63,8 @@ retriever: Optional[TFIDFRetriever] = None
 def reset_chatbot(model_name):
     global agent, state
     agent = create_chatbot_agent(model_name)
-    state = AgentStatePydantic(messages=[AIMessage(
-        content=(
-            "Hello!\n\nI'm a personal assistant chatbot. "
-            "I will respond as best I can to any messages you send me."
-        )
-    )])
+    # Start with a clean state for better compatibility
+    state = AgentStatePydantic(messages=[])
 
 
 @app.post("/init")
@@ -111,25 +107,57 @@ async def chat(request: Request, user_input: UserMessage):
     if not model_id:
         raise HTTPException(status_code=400, detail="Missing x-model-id header")
 
-    # 4) Initialize ReAct agent if not already done
-    if agent is None:
-        logger.info("Initializing ReAct agent with model: %s", model_id)
+    # 4) Check if we need to initialize or switch models
+    current_model = getattr(agent, '_model_name', None) if agent else None
+    
+    if agent is None or current_model != model_id:
+        logger.info("Initializing/Reinitializing ReAct agent with model: %s", model_id)
         reset_chatbot(model_id)
+        # Store the model name for future comparisons
+        agent._model_name = model_id
 
     try:
+        # Add user message to state
         state.messages += [HumanMessage(content=user_input.prompt)]
-        result = agent.invoke(input=state, config=RunnableConfig(configurable={'retriever': retriever}))
+        
+        # Invoke agent with proper configuration
+        config = RunnableConfig(configurable={'retriever': retriever})
+        result = agent.invoke(input=state, config=config)
         state = AgentStatePydantic.model_validate(result)
 
         # Keep chat log manageable (last 20 messages)
         if len(state.messages) > 20:
             state.messages = state.messages[-20:]
 
+        # Find the last AI message (not tool call)
+        last_ai_message = None
+        for msg in reversed(state.messages):
+            if hasattr(msg, 'content') and isinstance(msg.content, str) and not msg.content.startswith('{"name":'):
+                last_ai_message = msg
+                break
+        
+        if last_ai_message:
+            return last_ai_message
+        else:
+            # Fallback to last message if no proper AI response found
+            return state.messages[-1]
+
     except Exception as exc:
         logger.error("ReAct agent error: %s", exc)
-        raise HTTPException(status_code=500, detail="Agent processing error")
-
-    return state.messages[-1]
+        
+        # Handle rate limiting specifically
+        if "429" in str(exc) or "Too Many Requests" in str(exc):
+            raise HTTPException(
+                status_code=429, 
+                detail="Rate limit exceeded. Switch to a different model for immediate response."
+            )
+        elif "No deployments available" in str(exc):
+            raise HTTPException(
+                status_code=503, 
+                detail="Model temporarily unavailable. Switch to a different model for immediate response."
+            )
+        else:
+            raise HTTPException(status_code=500, detail="Agent processing error")
 
 
 # ─── Run the app with Uvicorn if executed directly ───────────────────────
