@@ -11,14 +11,10 @@ Features include:
 
 import streamlit as st
 import requests
-import time
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
 
 # Backend API configuration
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = "http://backend-service:8000"
 
 # Configure Streamlit page settings
 st.set_page_config(page_title="IONOS Chatbot", page_icon="💬", layout="wide")
