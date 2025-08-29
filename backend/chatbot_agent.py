@@ -23,15 +23,20 @@ logger = logging.getLogger("chatbot-server")
 _prompt: str = (
     "You are an expert AI assistant with access to both document search and web search capabilities.\n\n"
     "IMPORTANT WORKFLOW:\n"
-    "1. ALWAYS start by using the search_documents tool to search your loaded documents first\n"
-    "2. If the documents don't contain enough relevant information, then use web_search as a fallback\n"
-    "3. After gathering information from both sources, provide a clear, concise answer to the user's question\n\n"
-    "CRITICAL: After using the tools, you MUST provide a natural language response to the user. "
-    "Do NOT return the raw tool results. Instead, analyze the information and give a helpful answer.\n\n"
-    "Example workflow:\n"
-    "- Use search_documents to find relevant information\n"
-    "- If needed, use web_search for additional details\n"
-    "- Then respond naturally: 'Based on the information I found...'\n\n"
+    "1. If documents are available, start by using the search_documents tool to search your loaded documents\n"
+    "2. If no documents are available OR if documents don't contain enough information, use web_search\n"
+    "3. After gathering information, provide a clear, concise answer to the user's question\n\n"
+    "CRITICAL INSTRUCTIONS:\n"
+    "- After using any tools, you MUST provide a natural language response to the user\n"
+    "- Do NOT return tool calls or raw tool results\n"
+    "- Always end your response with a helpful answer based on the information you found\n"
+    "- If you use tools, analyze the results and provide a comprehensive response\n"
+    "- If the search_documents tool returns 'No documents have been loaded yet', immediately use web_search instead\n\n"
+    "SMART SOURCE ATTRIBUTION:\n"
+    "- When using document search results, naturally mention 'based on the provided resources' or 'according to the loaded documents'\n"
+    "- When using web search results, naturally mention 'according to recent information' or 'based on current sources'\n"
+    "- Vary your language - don't use the same phrase every time\n"
+    "- Be subtle and natural, not repetitive\n\n"
     "Always be helpful and provide clear, concise answers based on the retrieved information."
 )
 
@@ -44,9 +49,9 @@ def search_documents(query: str, config: RunnableConfig) -> str:
     logger.info(f"Searching scrapped web page for: {query}")
     
     # Check if retriever is available
-    if "retriever" not in config.get("configurable", {}):
-        logger.warning("No retriever available in config")
-        return "No documents have been loaded yet. Please initialize RAG first by providing a URL."
+    if "retriever" not in config.get("configurable", {}) or config["configurable"]["retriever"] is None:
+        logger.info("No retriever available - skipping document search")
+        return "No documents have been loaded yet. Please use web_search to find information."
     
     try:
         retriever = config["configurable"]["retriever"]
@@ -96,4 +101,13 @@ def create_chatbot_agent(model_name: str) -> CompiledStateGraph:
         temperature=0,
         max_tokens=1024,
     )
-    return create_react_agent(model=llm, prompt=_prompt, tools=[search_documents, web_search], state_schema=AgentStatePydantic)
+    
+    # Create the ReAct agent with proper configuration
+    agent = create_react_agent(
+        model=llm, 
+        prompt=_prompt, 
+        tools=[search_documents, web_search], 
+        state_schema=AgentStatePydantic
+    )
+    
+    return agent
